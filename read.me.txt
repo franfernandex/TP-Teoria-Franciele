@@ -1,0 +1,26 @@
+pip install fastapi
+pip install uvicorn
+pip install automata-lib
+
+
+python -m uvicorn main:app --reload
+
+
+Use a API via http://127.0.0.1:8000/docs para interagir com os endpoints.
+
+
+Endpoints e Requisitos de Entrada/Saída
+Endpoints Implementados:
+/dfa/create: Criação de um AFD (Autômato Finito Determinístico).
+/dfa/test-string: Testa se uma string é aceita por um AFD.
+/dfa/visualize: Gera um diagrama visual de um AFD.
+/pda/create: Criação de um PDA (Autômato com Pilha).
+/pda/visualize: Gera um diagrama visual de um PDA.
+/tm/create: Criação de uma Máquina de Turing.
+/tm/run: Testa se uma string é aceita por uma Máquina de Turing.
+
+
+Cada tipo de autômato possui um endpoint dedicado para criação e manipulação.
+Os endpoints seguem os princípios RESTful:
+POST para criar autômatos.
+GET para testar strings ou visualizar autômatos.
