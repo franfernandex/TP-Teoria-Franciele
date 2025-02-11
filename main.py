@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from automata.fa.dfa import DFA  # Automato Finito Determinístico
 from automata.pda.dpda import DPDA  # Autômato com Pilha Determinístico
 from automata.tm.dtm import DTM  # Máquina de Turing Determinística
@@ -13,45 +13,45 @@ afds = {}
 dpdas = {}
 dtms = {}
 
-# Modelo para transições do DPDA
-class Transicao(BaseModel):
-    pop: str
-    push: List[str]
-    destino: str
-
 # MODELOS DE DADOS
-class Automato(BaseModel):
+
+# Modelo para o AFD
+class AutomatoAFD(BaseModel):
     estados: List[str]
     alfabeto: List[str]
-    transicoes: Dict[str, Dict[str, str]] 
+    transicoes: Dict[str, Dict[str, str]]
     estado_inicial: str
     estados_aceitacao: List[str]
 
+# Modelo para o DPDA
+class AutomatoDPDA(BaseModel):
+    estados: List[str]
+    alfabeto: List[str]
+    simbolos_pilha: List[str]
+    transicoes: Dict[str, Dict[str, Dict[str, Tuple[str, Tuple[str, ...]]]]]
+    estado_inicial: str
+    simbolo_inicial_pilha: str
+    estados_aceitacao: List[str]
+    modo_aceitacao: str
 
+# Modelo para o DTM
+class AutomatoDTM(BaseModel):
+    estados: List[str]
+    alfabeto: List[str]
+    simbolos_fita: List[str]
+    transicoes: Dict[str, Dict[str, Tuple[str, str, str]]]
+    estado_inicial: str
+    simbolo_branco: str
+    estados_aceitacao: List[str]
 
-
-def formatar_transicoes_dpda(transicoes: Dict[str, Dict[str, Transicao]]):
-    formatted_transitions = {}
-    for estado, simbolos in transicoes.items():
-        formatted_transitions[estado] = {}
-        for simbolo, transicao in simbolos.items():
-            formatted_transitions[estado][simbolo] = (
-                transicao.destino,
-                transicao.pop,
-                tuple(transicao.push)
-            )
-    return formatted_transitions
-
-
-
-
+# Modelo para testar strings
 class TestaString(BaseModel):
     entrada: str
 
 
 # ENDPOINTS PARA AFD
 @app.post("/afd/")
-def criar_afd(automato: Automato):
+def criar_afd(automato: AutomatoAFD):
     """
     Cria um autômato finito determinístico (AFD).
     """
@@ -117,20 +117,20 @@ def visualizar_afd(automato_id: str):
 
 # ENDPOINTS PARA DPDA
 @app.post("/dpda/")
-def criar_dpda(automato: Automato):
+def criar_dpda(automato: AutomatoDPDA):
+    """
+    Cria um autômato com pilha determinístico (DPDA).
+    """
     try:
-        # Formatar as transições no formato aceito pela biblioteca Automata
-        transicoes_formatadas = formatar_transicoes_dpda(automato.transicoes)
-
-        # Criar o DPDA
         dpda = DPDA(
             states=set(automato.estados),
             input_symbols=set(automato.alfabeto),
-            stack_symbols={"Z", "X"},  # Conjunto de símbolos da pilha
-            transitions=transicoes_formatadas,
+            stack_symbols=set(automato.simbolos_pilha),
+            transitions=automato.transicoes,
             initial_state=automato.estado_inicial,
-            initial_stack_symbol="Z",
+            initial_stack_symbol=automato.simbolo_inicial_pilha,
             final_states=set(automato.estados_aceitacao),
+            acceptance_mode=automato.modo_aceitacao,
         )
         automato_id = str(uuid.uuid4())
         dpdas[automato_id] = dpda
@@ -156,7 +156,7 @@ def visualizar_dpda(automato_id: str):
 
 # ENDPOINTS PARA DTM
 @app.post("/dtm/")
-def criar_dtm(automato: Automato):
+def criar_dtm(automato: AutomatoDTM):
     """
     Cria uma máquina de Turing determinística (DTM).
     """
@@ -164,10 +164,10 @@ def criar_dtm(automato: Automato):
         dtm = DTM(
             states=set(automato.estados),
             input_symbols=set(automato.alfabeto),
-            tape_symbols=set(automato.alfabeto + ["_"]),  # Inclui símbolo vazio
+            tape_symbols=set(automato.simbolos_fita),
             transitions=automato.transicoes,
             initial_state=automato.estado_inicial,
-            blank_symbol="_",
+            blank_symbol=automato.simbolo_branco,
             final_states=set(automato.estados_aceitacao),
         )
         automato_id = str(uuid.uuid4())
