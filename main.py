@@ -23,7 +23,7 @@ class Transicao(BaseModel):
 class Automato(BaseModel):
     estados: List[str]
     alfabeto: List[str]
-    transicoes: Dict[str, Dict[str, Transicao]]  # Transições aceitam objetos Transicao
+    transicoes: Dict[str, Dict[str, str]] 
     estado_inicial: str
     estados_aceitacao: List[str]
 
