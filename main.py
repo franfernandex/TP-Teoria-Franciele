@@ -138,6 +138,21 @@ def criar_dpda(automato: AutomatoDPDA):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Erro ao criar o DPDA: {str(e)}")
 
+@app.post("/dpda/{automato_id}/testar")
+def testar_dpda(automato_id: str, entrada: TestaString):
+    """
+    Testa se uma string é aceita pelo DPDA.
+    """
+    if automato_id not in dpdas:
+        raise HTTPException(status_code=404, detail="DPDA não encontrado.")
+    automato = dpdas[automato_id]
+    try:
+        aceita = automato.accepts_input(entrada.entrada)
+        return {"entrada": entrada.entrada, "aceita": aceita}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro ao testar a string no DPDA: {str(e)}")
+    
+
 @app.get("/dpda/{automato_id}/visualizar")
 def visualizar_dpda(automato_id: str):
     """
@@ -176,6 +191,19 @@ def criar_dtm(automato: AutomatoDTM):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Erro ao criar o DTM: {str(e)}")
 
+@app.post("/dtm/{automato_id}/testar")
+def testar_dtm(automato_id: str, entrada: TestaString):
+    """
+    Testa se uma string é aceita pelo DTM.
+    """
+    if automato_id not in dtms:
+        raise HTTPException(status_code=404, detail="DTM não encontrado.")
+    automato = dtms[automato_id]
+    try:
+        aceita = automato.accepts_input(entrada.entrada)
+        return {"entrada": entrada.entrada, "aceita": aceita}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro ao testar a string no DTM: {str(e)}")
 
 @app.get("/dtm/{automato_id}/visualizar")
 def visualizar_dtm(automato_id: str):
