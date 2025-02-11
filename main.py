@@ -1,182 +1,193 @@
-from fastapi import FastAPI, HTTPException, Query
-from automata.fa.dfa import DFA
-from automata.pda.pda import PDA
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 from typing import List, Dict
-from fastapi.responses import FileResponse
-import os
+from automata.fa.dfa import DFA  # Automato Finito Determinístico
+from automata.pda.dpda import DPDA  # Autômato com Pilha Determinístico
+from automata.tm.dtm import DTM  # Máquina de Turing Determinística
 import uuid
 
 app = FastAPI()
 
-# Diretório para armazenar visualizações
-GRAPH_DIR = "graphs"
-os.makedirs(GRAPH_DIR, exist_ok=True)
+# Estruturas para armazenar os autômatos
+afds = {}
+dpdas = {}
+dtms = {}
+
+# Modelo para transições do DPDA
+class Transicao(BaseModel):
+    pop: str
+    push: List[str]
+    destino: str
+
+# MODELOS DE DADOS
+class Automato(BaseModel):
+    estados: List[str]
+    alfabeto: List[str]
+    transicoes: Dict[str, Dict[str, Transicao]]  # Transições aceitam objetos Transicao
+    estado_inicial: str
+    estados_aceitacao: List[str]
 
 
-# Função para criar e validar um DFA
-def create_and_validate_dfa(states, input_symbols, transitions, initial_state, final_states):
+
+
+def formatar_transicoes_dpda(transicoes: Dict[str, Dict[str, Transicao]]):
+    formatted_transitions = {}
+    for estado, simbolos in transicoes.items():
+        formatted_transitions[estado] = {}
+        for simbolo, transicao in simbolos.items():
+            formatted_transitions[estado][simbolo] = (
+                transicao.destino,
+                transicao.pop,
+                tuple(transicao.push)
+            )
+    return formatted_transitions
+
+
+
+
+class TestaString(BaseModel):
+    entrada: str
+
+
+# ENDPOINTS PARA AFD
+@app.post("/afd/")
+def criar_afd(automato: Automato):
     """
-    Cria um DFA e retorna o objeto DFA se for válido.
+    Cria um autômato finito determinístico (AFD).
     """
-    dfa = DFA(
-        states=set(states),
-        input_symbols=set(input_symbols),
-        transitions=transitions,
-        initial_state=initial_state,
-        final_states=set(final_states),
-    )
-    # Verifica se o DFA foi criado corretamente
-    if not dfa.states or not dfa.transitions or not dfa.input_symbols:
-        raise ValueError("DFA possui atributos ausentes ou inválidos.")
-    return dfa
-
-
-# Endpoint para criar um DFA
-@app.post("/dfa/create")
-def create_dfa(
-    states: List[str],
-    input_symbols: List[str],
-    transitions: Dict[str, Dict[str, str]],
-    initial_state: str,
-    final_states: List[str],
-):
     try:
-        # Criar e validar o DFA
-        dfa = create_and_validate_dfa(states, input_symbols, transitions, initial_state, final_states)
-
-        # Serializar os dados do DFA para a resposta
-        return {
-            "message": "DFA criado com sucesso!",
-            "dfa": {
-                "states": list(dfa.states),
-                "input_symbols": list(dfa.input_symbols),
-                "transitions": dfa.transitions,
-                "initial_state": dfa.initial_state,
-                "final_states": list(dfa.final_states),
-            },
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro ao criar DFA: {str(e)}")
-
-
-@app.get("/dfa/test-string")
-def test_dfa_string(
-    states: List[str],
-    input_symbols: List[str],
-    transitions: Dict[str, Dict[str, str]],
-    initial_state: str,
-    final_states: List[str],
-    string: str = Query(...),
-):
-    try:
-        # Criar o DFA
         dfa = DFA(
-            states=set(states),
-            input_symbols=set(input_symbols),
-            transitions=transitions,
-            initial_state=initial_state,
-            final_states=set(final_states),
+            states=set(automato.estados),
+            input_symbols=set(automato.alfabeto),
+            transitions=automato.transicoes,
+            initial_state=automato.estado_inicial,
+            final_states=set(automato.estados_aceitacao),
         )
-        # Testar a string
-        is_accepted = dfa.accepts_input(string)
-        return {"string": string, "accepted": is_accepted}
+        automato_id = str(uuid.uuid4())
+        afds[automato_id] = dfa
+        return {"id": automato_id, "detalhes": automato}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro ao testar string no DFA: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Erro ao criar o AFD: {str(e)}")
 
 
-@app.get("/dfa/visualize")
-def visualize_dfa(
-    states: List[str],
-    input_symbols: List[str],
-    transitions: Dict[str, Dict[str, str]],
-    initial_state: str,
-    final_states: List[str],
-):
+@app.get("/afd/{automato_id}")
+def obter_afd(automato_id: str):
+    """
+    Retorna os detalhes do AFD.
+    """
+    if automato_id not in afds:
+        raise HTTPException(status_code=404, detail="AFD não encontrado.")
+    automato = afds[automato_id]
+    return {
+        "estados": list(automato.states),
+        "alfabeto": list(automato.input_symbols),
+        "transições": automato.transitions,
+        "estado_inicial": automato.initial_state,
+        "estados_aceitação": list(automato.final_states),
+    }
+
+
+@app.post("/afd/{automato_id}/testar")
+def testar_afd(automato_id: str, entrada: TestaString):
+    """
+    Testa se uma string é aceita pelo AFD.
+    """
+    if automato_id not in afds:
+        raise HTTPException(status_code=404, detail="AFD não encontrado.")
+    automato = afds[automato_id]
+    aceita = automato.accepts_input(entrada.entrada)
+    return {"entrada": entrada.entrada, "aceita": aceita}
+
+
+@app.get("/afd/{automato_id}/visualizar")
+def visualizar_afd(automato_id: str):
+    """
+    Gera uma representação gráfica (PNG) do AFD.
+    """
+    if automato_id not in afds:
+        raise HTTPException(status_code=404, detail="AFD não encontrado.")
+    automato = afds[automato_id]
     try:
-        # Criar o DFA
-        dfa = DFA(
-            states=set(states),
-            input_symbols=set(input_symbols),
-            transitions=transitions,
-            initial_state=initial_state,
-            final_states=set(final_states),
-        )
-        # Gerar o gráfico
-        file_name = f"dfa_visualization_{uuid.uuid4().hex}.png"
-        file_path = os.path.join(GRAPH_DIR, file_name)
-        dfa.show_diagram(path=file_path)
-        return FileResponse(file_path)
+        # Gera o diagrama e salva como um arquivo PNG
+        automato.show_diagram(path=f"afd-{automato_id}.png")
+        return {"message": f"Diagrama salvo como afd-{automato_id}.png"}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro ao visualizar DFA: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar o diagrama do AFD: {str(e)}")
 
 
-# Endpoint para criar um PDA
-@app.post("/pda/create")
-def create_pda(
-    states: List[str],
-    input_symbols: List[str],
-    stack_symbols: List[str],
-    transitions: Dict[str, Dict[str, List[str]]],
-    initial_state: str,
-    final_states: List[str],
-):
+# ENDPOINTS PARA DPDA
+@app.post("/dpda/")
+def criar_dpda(automato: Automato):
     try:
-        # Criar o PDA
-        pda = PDA(
-            states=set(states),
-            input_symbols=set(input_symbols),
-            stack_symbols=set(stack_symbols),
-            transitions=transitions,
-            initial_state=initial_state,
-            initial_stack_symbol="$",
-            final_states=set(final_states),
+        # Formatar as transições no formato aceito pela biblioteca Automata
+        transicoes_formatadas = formatar_transicoes_dpda(automato.transicoes)
+
+        # Criar o DPDA
+        dpda = DPDA(
+            states=set(automato.estados),
+            input_symbols=set(automato.alfabeto),
+            stack_symbols={"Z", "X"},  # Conjunto de símbolos da pilha
+            transitions=transicoes_formatadas,
+            initial_state=automato.estado_inicial,
+            initial_stack_symbol="Z",
+            final_states=set(automato.estados_aceitacao),
         )
-        return {
-            "message": "PDA criado com sucesso!",
-            "pda": {
-                "states": list(pda.states),
-                "input_symbols": list(pda.input_symbols),
-                "stack_symbols": list(pda.stack_symbols),
-                "transitions": pda.transitions,
-                "initial_state": pda.initial_state,
-                "initial_stack_symbol": pda.initial_stack_symbol,
-                "final_states": list(pda.final_states),
-            },
-        }
+        automato_id = str(uuid.uuid4())
+        dpdas[automato_id] = dpda
+        return {"id": automato_id, "detalhes": automato}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro ao criar PDA: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Erro ao criar o DPDA: {str(e)}")
 
-
-@app.get("/pda/visualize")
-def visualize_pda(
-    states: List[str],
-    input_symbols: List[str],
-    stack_symbols: List[str],
-    transitions: Dict[str, Dict[str, List[str]]],
-    initial_state: str,
-    final_states: List[str],
-):
+@app.get("/dpda/{automato_id}/visualizar")
+def visualizar_dpda(automato_id: str):
+    """
+    Gera uma representação gráfica (PNG) do DPDA.
+    """
+    if automato_id not in dpdas:
+        raise HTTPException(status_code=404, detail="DPDA não encontrado.")
+    automato = dpdas[automato_id]
     try:
-        # Criar o PDA
-        pda = PDA(
-            states=set(states),
-            input_symbols=set(input_symbols),
-            stack_symbols=set(stack_symbols),
-            transitions=transitions,
-            initial_state=initial_state,
-            initial_stack_symbol="$",
-            final_states=set(final_states),
-        )
-        # Gerar o gráfico
-        file_name = f"pda_visualization_{uuid.uuid4().hex}.png"
-        file_path = os.path.join(GRAPH_DIR, file_name)
-        pda.show_diagram(path=file_path)
-        return FileResponse(file_path)
+        # Gera o diagrama e salva como um arquivo PNG
+        automato.show_diagram(path=f"dpda-{automato_id}.png")
+        return {"message": f"Diagrama salvo como dpda-{automato_id}.png"}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro ao visualizar PDA: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar o diagrama do DPDA: {str(e)}")
 
 
-# Endpoint de teste
-@app.get("/")
-def read_root():
-    return {"message": "Bem-vindo à API de manipulação de autômatos 123!"}
+# ENDPOINTS PARA DTM
+@app.post("/dtm/")
+def criar_dtm(automato: Automato):
+    """
+    Cria uma máquina de Turing determinística (DTM).
+    """
+    try:
+        dtm = DTM(
+            states=set(automato.estados),
+            input_symbols=set(automato.alfabeto),
+            tape_symbols=set(automato.alfabeto + ["_"]),  # Inclui símbolo vazio
+            transitions=automato.transicoes,
+            initial_state=automato.estado_inicial,
+            blank_symbol="_",
+            final_states=set(automato.estados_aceitacao),
+        )
+        automato_id = str(uuid.uuid4())
+        dtms[automato_id] = dtm
+        return {"id": automato_id, "detalhes": automato}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro ao criar o DTM: {str(e)}")
+
+
+@app.get("/dtm/{automato_id}/visualizar")
+def visualizar_dtm(automato_id: str):
+    """
+    Gera uma representação gráfica (PNG) do DTM.
+    """
+    if automato_id not in dtms:
+        raise HTTPException(status_code=404, detail="DTM não encontrado.")
+    automato = dtms[automato_id]
+    try:
+        # Gera o diagrama e salva como um arquivo PNG
+        automato.show_diagram(path=f"dtm-{automato_id}.png")
+        return {"message": f"Diagrama salvo como dtm-{automato_id}.png"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar o diagrama do DTM: {str(e)}")
